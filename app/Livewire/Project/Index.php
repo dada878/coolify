@@ -4,7 +4,9 @@ namespace App\Livewire\Project;
 
 use App\Livewire\Concerns\RemembersCanvasView;
 use App\Models\Project;
+use App\Services\ProjectRuntimeStatus;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 class Index extends Component
@@ -41,9 +43,16 @@ class Index extends Component
             ->get();
     }
 
+    #[Renderless]
+    public function refreshRuntimeStatuses(ProjectRuntimeStatus $runtime): void
+    {
+        $this->dispatch('project-status-refreshed', statuses: $runtime->forCurrentTeam());
+    }
+
     public function render(): View
     {
         return view('livewire.project.index', [
+            'runtimeStatuses' => app(ProjectRuntimeStatus::class)->forCurrentTeam(),
             'projectsJs' => $this->projects->map(function (Project $project): array {
                 $firstEnvironment = $project->environments->first();
                 $resourceCount = collect([
