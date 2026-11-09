@@ -183,6 +183,12 @@
                 @endcan
                 {{-- The dashboard canvas link lives here, so it never adds a row above the page. --}}
                 <x-slot:actions>
+                    @if ($dashboardProjects->isNotEmpty())
+                        <div x-cloak x-show="viewMode === 'grid'">
+                            <x-table.sort-header label="Status" asc="running-asc" desc="running-desc" first="desc"
+                                action="setProjectSort" :current="$projectSort" title="Sort by number of running resources" />
+                        </div>
+                    @endif
                     <x-canvas-view-toggle :views="$dashboardProjects->isNotEmpty() ? null : []"
                         :list-url="route('dashboard')" :canvas-url="route('dashboard.canvas')" />
                 </x-slot:actions>
@@ -278,7 +284,8 @@
                     <div class="dashboard-project-runtime-row {{ $tableHead }}">
                         <x-table.sort-header label="Project" asc="name-asc" desc="name-desc"
                             action="setProjectSort" :current="$projectSort" />
-                        <span>Status</span>
+                        <x-table.sort-header label="Status" asc="running-asc" desc="running-desc" first="desc"
+                            action="setProjectSort" :current="$projectSort" title="Sort by number of running resources" />
                         <x-table.sort-header class="dashboard-project-contents" label="Contents" asc="resources-asc" desc="resources-desc" first="desc"
                             action="setProjectSort" :current="$projectSort" title="Sort by resource count" />
                         <div class="dashboard-project-description">
