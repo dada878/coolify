@@ -1,9 +1,12 @@
-<div class="application-settings-form w-full">
+<div class="application-settings-form w-full" x-data="{ runtimeStatuses: @js($runtimeStatuses) }"
+    x-on:project-status-refreshed="runtimeStatuses = $event.detail.statuses">
     <x-slot:title>
         Projects | Coolify
     </x-slot>
 
-    <div x-data="projectsIndex()" class="w-full">
+    <div x-data="projectsIndex()"
+        wire:poll.30s.visible="refreshRuntimeStatuses"
+        class="w-full">
         <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 class="min-w-0 truncate text-[24px]! leading-7! font-semibold! tracking-tight!">Projects</h1>
             @can('createAnyResource')
@@ -109,6 +112,9 @@
                                 </div>
                             </div>
 
+                            <div class="my-2">
+                                @include('livewire.project.runtime-badge')
+                            </div>
                             <div class="mt-auto flex items-center justify-between gap-3 border-t border-neutral-100 pt-2.5 dark:border-white/[0.06]">
                                 <p class="project-card-stats relative z-10 min-w-0">
                                     <b x-text="project.environmentCount"></b>
@@ -165,9 +171,12 @@
                                     <x-reicon name="projects" class="size-4" />
                                 </template>
                             </div>
-                            <a :href="project.href" {{ wireNavigate() }}
-                                class="truncate text-[13px] font-semibold text-black hover:underline dark:text-fg"
+                            <div class="flex min-w-0 flex-col items-start gap-1">
+                                <a :href="project.href" {{ wireNavigate() }}
+                                class="max-w-full truncate text-[13px] font-semibold text-black hover:underline dark:text-fg"
                                 x-text="project.name"></a>
+                                @include('livewire.project.runtime-badge')
+                            </div>
                         </div>
 
                         <div class="flex items-center gap-3 text-[12px] font-medium text-neutral-600 dark:text-fg-dim">

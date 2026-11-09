@@ -404,7 +404,7 @@ class EnvironmentCanvas
      * @param  Collection<string, Service>  $services
      * @return array<int, string>
      */
-    private function startingServiceUuids(Collection $services): array
+    public function startingServiceUuids(Collection $services): array
     {
         if ($services->isEmpty()) {
             return [];
