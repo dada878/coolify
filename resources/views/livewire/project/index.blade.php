@@ -4,7 +4,7 @@
         Projects | Coolify
     </x-slot>
 
-    <div x-data="projectsIndex()"
+    <div x-data="projectsIndex(@js($savedSort), @js($sortLabels), $persist(null).as(@js('coolify.projects.pending-sort.'.auth()->id())).using(sessionStorage))"
         wire:poll.30s.visible="refreshRuntimeStatuses"
         class="w-full">
         <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -291,10 +291,12 @@
 @endassets
 
 <script>
-    function projectsIndex() {
+    function projectsIndex(savedSort, sortLabels, pendingSort) {
         return {
             search: '',
-            sortBy: 'name-asc',
+            sortBy: savedSort,
+            pendingSort,
+            savingSort: false,
             runtimeFilter: 'all',
             runtimeOptions: {
                 all: 'All statuses',
@@ -308,27 +310,36 @@
             page: 1,
             pageSize: 12,
             projects: @js($projectsJs),
-            sortOptions: [{
-                    value: 'running-desc',
-                    label: 'Most running resources'
-                },
-                {
-                    value: 'name-asc',
-                    label: 'Name A–Z'
-                },
-                {
-                    value: 'name-desc',
-                    label: 'Name Z–A'
-                },
-                {
-                    value: 'resources-desc',
-                    label: 'Most resources'
-                },
-                {
-                    value: 'environments-desc',
-                    label: 'Most environments'
-                },
-            ],
+            init() {
+                // A reload can interrupt a save. Replay only this tab's unconfirmed choice.
+                if (Object.hasOwn(sortLabels, this.pendingSort)) {
+                    this.sortBy = this.pendingSort;
+                    this.flushSort();
+                } else {
+                    this.pendingSort = null;
+                }
+                this.$watch('sortBy', value => {
+                    this.pendingSort = value;
+                    this.flushSort();
+                });
+            },
+            async flushSort() {
+                if (this.savingSort) return;
+                this.savingSort = true;
+                try {
+                    while (this.pendingSort !== null) {
+                        const value = this.pendingSort;
+                        await this.$wire.saveProjectSort(value);
+                        if (this.pendingSort === value) this.pendingSort = null;
+                    }
+                } finally {
+                    this.savingSort = false;
+                }
+            },
+            get sortOptions() {
+                const values = new Set(['running-desc', 'name-asc', 'name-desc', 'resources-desc', 'environments-desc', this.sortBy]);
+                return Array.from(values, value => ({ value, label: sortLabels[value] }));
+            },
             get pinnedShortcuts() {
                 return this.filteredProjects.filter(project => project.pinned)
                     .sort((a, b) => a.name.localeCompare(b.name));
