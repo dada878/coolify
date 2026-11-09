@@ -14,8 +14,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use App\Services\ProjectRuntimeStatus;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cookie;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
-use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 class Dashboard extends Component
@@ -25,11 +26,9 @@ class Dashboard extends Component
     /** The dashboard shows only the first projects and servers of the sorted lists. */
     public const ITEM_LIMIT = 8;
 
-    private const PROJECT_SORT_COLUMNS = ['name', 'resources', 'description'];
+    private const PROJECT_SORT_COLUMNS = ['name', 'resources', 'description', 'running'];
 
     private const SERVER_SORT_COLUMNS = ['name', 'description', 'status'];
-
-    public Collection $projects;
 
     public Collection $servers;
 
@@ -71,7 +70,16 @@ class Dashboard extends Component
         $this->securityUpdateNow = TeamVulnerabilities::updateNowResources(currentTeam()->id);
         $this->privateKeys = $this->showsTeamSections ? PrivateKey::ownedByCurrentTeamCached() : collect();
         $this->servers = $this->showsTeamSections ? Server::ownedByCurrentTeamCached() : collect();
-        $this->projects = Project::ownedByCurrentTeam()
+        $savedSort = request()->cookie($this->projectSortCookie());
+        if (is_string($savedSort) && $this->isValidSort($savedSort, self::PROJECT_SORT_COLUMNS)) {
+            $this->projectSort = $savedSort;
+        }
+    }
+
+    #[Computed]
+    public function projects(): Collection
+    {
+        return Project::ownedByCurrentTeam()
             ->with(['environments:id,uuid,name,project_id'])
             ->withCount([
                 'applications',
@@ -91,11 +99,17 @@ class Dashboard extends Component
 
     public function render()
     {
-        $dashboardProjects = $this->sortedProjects()->take(self::ITEM_LIMIT);
+        $runtime = app(ProjectRuntimeStatus::class);
+        $statuses = str_starts_with($this->projectSort, 'running-') ? $runtime->forCurrentTeam() : null;
+        $dashboardProjects = $this->sortedProjects($statuses ?? [])->take(self::ITEM_LIMIT);
         $dashboardServers = $this->sortedServers()->take(self::ITEM_LIMIT);
-        $this->projectRuntimeStatuses = app(ProjectRuntimeStatus::class)->forCurrentTeam($dashboardProjects->pluck('uuid')->all());
+        $visibleUuids = $dashboardProjects->pluck('uuid')->all();
+        $this->projectRuntimeStatuses = $statuses === null
+            ? $runtime->forCurrentTeam($visibleUuids)
+            : array_intersect_key($statuses, array_flip($visibleUuids));
 
         return view('livewire.dashboard', [
+            'projects' => $this->projects,
             'pendingInvitations' => $this->pendingInvitations(),
             'starredResources' => $this->starredResources(),
             'dashboardProjects' => $dashboardProjects,
@@ -105,17 +119,26 @@ class Dashboard extends Component
         ]);
     }
 
-    #[Renderless]
     public function refreshProjectStatuses(ProjectRuntimeStatus $runtime): void
     {
-        $this->projectRuntimeStatuses = $runtime->forCurrentTeam(array_keys($this->projectRuntimeStatuses));
+        // Running counts can move any team project into the dashboard's top eight.
+        if (! str_starts_with($this->projectSort, 'running-')) {
+            $this->projectRuntimeStatuses = $runtime->forCurrentTeam(array_keys($this->projectRuntimeStatuses));
+            $this->skipRender();
+        }
     }
 
     public function setProjectSort(string $sort): void
     {
         if ($this->isValidSort($sort, self::PROJECT_SORT_COLUMNS)) {
             $this->projectSort = $sort;
+            Cookie::queue(Cookie::forever($this->projectSortCookie(), $sort));
         }
+    }
+
+    private function projectSortCookie(): string
+    {
+        return 'coolify_'.auth()->id().'_dashboard_projects_sort';
     }
 
     public function setServerSort(string $sort): void
@@ -218,10 +241,11 @@ class Dashboard extends Component
     /**
      * @return Collection<int, Project>
      */
-    private function sortedProjects(): Collection
+    private function sortedProjects(array $statuses): Collection
     {
         return $this->sortItems($this->projects, $this->projectSort, fn (Project $project, string $column): int|string => match ($column) {
             'resources' => $this->projectResourceCount($project),
+            'running' => $statuses[$project->uuid]['running'] ?? 0,
             'description' => (string) $project->description,
             default => $project->name,
         });
