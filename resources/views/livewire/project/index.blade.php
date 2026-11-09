@@ -52,15 +52,36 @@
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
-                    <select aria-label="Filter projects by runtime status" class="button w-auto!"
-                        x-model="runtimeFilter" x-on:change="page = 1">
-                        <option value="all">All statuses</option>
-                        <option value="running">Has running resources</option>
-                        <option value="partial">Partially running</option>
-                        <option value="attention">Needs attention</option>
-                        <option value="stopped">Stopped</option>
-                        <option value="empty">No resources</option>
-                    </select>
+                    <x-table.dropdown panel-class="w-56!" role="presentation">
+                        <x-slot:trigger>
+                            <button type="button" id="project-status-trigger" x-ref="statusButton" class="button"
+                                :class="runtimeFilter !== 'all' && 'button-highlighted'"
+                                aria-haspopup="listbox" aria-controls="project-status-options" :aria-expanded="open"
+                                :aria-label="'Filter by status: ' + runtimeOptions[runtimeFilter]"
+                                x-on:click.stop="toggle(); if (open) $nextTick(() => requestAnimationFrame(() => $refs.panel.querySelector('[aria-selected=true]')?.focus({ preventScroll: true })))"
+                                x-on:keydown.down.prevent="$el.click()" x-on:keydown.up.prevent="$el.click()">
+                                <x-reicon name="filter" class="size-3.5 shrink-0" />
+                                <span x-text="runtimeFilter === 'all' ? 'Status' : runtimeOptions[runtimeFilter]">Status</span>
+                                <x-reicon name="chevron-down" class="size-3.5 shrink-0 text-neutral-400" />
+                            </button>
+                        </x-slot:trigger>
+                        <div id="project-status-options" role="listbox" aria-label="Project status"
+                            x-on:keydown.down.prevent="$focus.within($el).wrap().next()"
+                            x-on:keydown.up.prevent="$focus.within($el).wrap().previous()"
+                            x-on:keydown.home.prevent="$focus.within($el).first()"
+                            x-on:keydown.end.prevent="$focus.within($el).last()"
+                            x-on:keydown.escape.stop.prevent="close(); $refs.statusButton.focus()"
+                            x-on:focusout="if (!$el.contains($event.relatedTarget)) close()">
+                            <template x-for="(label, value) in runtimeOptions" :key="value">
+                                <button type="button" role="option" tabindex="-1" class="listbox-option"
+                                    :aria-selected="runtimeFilter === value"
+                                    x-on:click="runtimeFilter = value; page = 1; close(); $refs.statusButton.focus()">
+                                    <span x-text="label"></span>
+                                    <x-reicon name="check" x-show="runtimeFilter === value" class="size-3.5 shrink-0" />
+                                </button>
+                            </template>
+                        </div>
+                    </x-table.dropdown>
                     <div :class="viewMode === 'grid' ? '' : 'min-[641px]:hidden'">
                         <x-table.dropdown panel-class="w-52!">
                             <x-slot:trigger>
@@ -94,6 +115,15 @@
                 </div>
             </div>
 
+            <nav x-cloak x-show="pinnedShortcuts.length" aria-label="Pinned projects"
+                class="mb-3 flex min-w-0 items-center gap-2">
+                <span class="shrink-0 text-[12px] font-medium text-neutral-500 dark:text-fg-dim">Pinned</span>
+                <div class="flex min-w-0 items-center gap-2 overflow-x-auto p-1">
+                    <template x-for="project in pinnedShortcuts" :key="project.uuid">
+                        <a :href="project.href" {{ wireNavigate() }} class="button shrink-0" x-text="project.name"></a>
+                    </template>
+                </div>
+            </nav>
             <div x-cloak x-show="viewMode === 'grid'">
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <template x-for="project in paginatedProjects" :key="project.uuid">
@@ -134,6 +164,7 @@
                                 </p>
 
                                 <div class="relative z-10 flex shrink-0 items-center gap-0.5">
+                                    @include('livewire.project.pin-button')
                                     <a x-show="project.addResourceHref" :href="project.addResourceHref"
                                         {{ wireNavigate() }}
                                         class="card-icon-button flex size-7.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black"
@@ -156,12 +187,14 @@
             </div>
 
             <div x-show="viewMode === 'table'"
-                class="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]">
+                class="project-directory-table overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]">
                 <div
-                    class="projects-table-grid border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-medium text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-faint">
+                    class="project-directory-row border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-medium text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-faint">
                     <x-table.sort-header label="Project" asc="name-asc" desc="name-desc" then="page = 1" />
-                    <x-table.sort-header label="Contents" asc="resources-asc" desc="resources-desc" first="desc" then="page = 1" />
-                    <x-table.sort-header label="Created" asc="created-asc" desc="created-desc" first="desc" then="page = 1" />
+                    <x-table.sort-header label="Status" asc="running-asc" desc="running-desc" first="desc"
+                        title="Sort by number of running resources" then="page = 1" />
+                    <x-table.sort-header class="project-contents" label="Contents" asc="resources-asc" desc="resources-desc" first="desc" then="page = 1" />
+                    <x-table.sort-header class="project-created" label="Created" asc="created-asc" desc="created-desc" first="desc" then="page = 1" />
                     <x-table.sort-header label="Description" asc="description-asc" desc="description-desc" then="page = 1"
                         class="project-description" />
                     <span class="text-right">Actions</span>
@@ -169,7 +202,7 @@
 
                 <template x-for="project in paginatedProjects" :key="project.uuid">
                     <div
-                        class="projects-table-grid group min-h-14 items-center border-b border-neutral-200 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-neutral-50 dark:border-white/[0.07] dark:hover:bg-white/[0.025]">
+                        class="project-directory-row group min-h-14 items-center border-b border-neutral-200 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-neutral-50 dark:border-white/[0.07] dark:hover:bg-white/[0.025]">
                         <div class="flex min-w-0 items-center gap-3">
                             <div
                                 class="resource-glyph flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500">
@@ -180,15 +213,12 @@
                                     <x-reicon name="projects" class="size-4" />
                                 </template>
                             </div>
-                            <div class="flex min-w-0 flex-col items-start gap-1">
-                                <a :href="project.href" {{ wireNavigate() }}
+                            <a :href="project.href" {{ wireNavigate() }}
                                 class="max-w-full truncate text-[13px] font-semibold text-black hover:underline dark:text-fg"
                                 x-text="project.name"></a>
-                                @include('livewire.project.runtime-badge')
-                            </div>
                         </div>
-
-                        <div class="flex items-center gap-3 text-[12px] font-medium text-neutral-600 dark:text-fg-dim">
+                        <div>@include('livewire.project.runtime-badge')</div>
+                        <div class="project-contents flex items-center gap-3 text-[12px] font-medium text-neutral-600 dark:text-fg-dim">
                             <span class="inline-flex items-center gap-1" data-tooltip="Environments"
                                 aria-label="Environments">
                                 <x-reicon name="layers" class="size-3.5 text-neutral-400 dark:text-fg-faint" />
@@ -199,12 +229,13 @@
                                 <span x-text="project.resourceCount"></span>
                             </span>
                         </div>
-                        <div class="truncate text-[12px] text-neutral-500 dark:text-fg-dim"
+                        <div class="project-created truncate text-[12px] text-neutral-500 dark:text-fg-dim"
                             x-text="project.createdAt"></div>
                         <p class="project-description truncate text-[12px] text-neutral-500 dark:text-fg-dim"
                             x-text="project.description || '-'"></p>
 
                         <div class="flex items-center justify-end gap-0.5">
+                            @include('livewire.project.pin-button')
                             <a x-show="project.addResourceHref" :href="project.addResourceHref" {{ wireNavigate() }}
                                 class="flex size-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
                                 title="Add resource" :aria-label="`Add resource to ${project.name}`">
@@ -235,18 +266,53 @@
     </div>
 </div>
 
+@assets
+<style>
+    .project-directory-table { container-type: inline-size; }
+    .project-directory-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) 8rem 5rem 6rem minmax(0, 1fr) 5.5rem;
+        column-gap: 1rem;
+    }
+    #project-status-options [role="option"]:focus-visible {
+        background: var(--coollabs-fill);
+        outline: 1px solid var(--coollabs-line);
+        outline-offset: -1px;
+    }
+    @container (max-width: 52rem) {
+        .project-directory-row { grid-template-columns: minmax(0, 1fr) 8rem 5rem 6rem 5.5rem; }
+        .project-directory-row .project-description { display: none; }
+    }
+    @container (max-width: 38rem) {
+        .project-directory-row { grid-template-columns: minmax(0, 1fr) 6rem 5.5rem; column-gap: .5rem; }
+        .project-directory-row .project-contents, .project-directory-row .project-created { display: none; }
+    }
+</style>
+@endassets
+
 <script>
     function projectsIndex() {
         return {
             search: '',
             sortBy: 'name-asc',
-            sortOpen: false,
             runtimeFilter: 'all',
+            runtimeOptions: {
+                all: 'All statuses',
+                running: 'Has running resources',
+                partial: 'Partially running',
+                attention: 'Needs attention',
+                stopped: 'Stopped',
+                empty: 'No resources',
+            },
             viewMode: @js($this->listView('projects', 'grid')),
             page: 1,
             pageSize: 12,
             projects: @js($projectsJs),
             sortOptions: [{
+                    value: 'running-desc',
+                    label: 'Most running resources'
+                },
+                {
                     value: 'name-asc',
                     label: 'Name A–Z'
                 },
@@ -263,6 +329,10 @@
                     label: 'Most environments'
                 },
             ],
+            get pinnedShortcuts() {
+                return this.filteredProjects.filter(project => project.pinned)
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            },
             get filteredProjects() {
                 const query = this.search.trim().toLowerCase();
                 const projects = this.projects.filter((project) => {
@@ -286,6 +356,7 @@
 
                 const [column, direction] = this.sortBy.split('-');
                 const sortValues = {
+                    running: (project) => this.runtimeStatuses[project.uuid]?.running ?? 0,
                     name: (project) => project.name,
                     resources: (project) => Number(project.resourceCount),
                     environments: (project) => Number(project.environmentCount),
@@ -301,6 +372,17 @@
                 return projects.sort((first, second) =>
                     order * compare(sortValue(first), sortValue(second)) ||
                     first.name.localeCompare(second.name));
+            },
+            async toggleProjectPin(project) {
+                if (project.savingPin) return;
+                project.savingPin = true;
+                const pinned = !project.pinned;
+                try {
+                    await this.$wire.setProjectPinned(project.uuid, pinned);
+                    project.pinned = pinned;
+                } finally {
+                    project.savingPin = false;
+                }
             },
             get totalPages() {
                 return Math.max(1, Math.ceil(this.filteredProjects.length / this.pageSize));
