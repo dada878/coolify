@@ -6,6 +6,8 @@ use App\Livewire\Concerns\RemembersCanvasView;
 use App\Models\Project;
 use App\Services\ProjectRuntimeStatus;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
@@ -49,11 +51,29 @@ class Index extends Component
         $this->dispatch('project-status-refreshed', statuses: $runtime->forCurrentTeam());
     }
 
+    #[Renderless]
+    public function setProjectPinned(string $uuid, bool $pinned): void
+    {
+        $project = Project::ownedByCurrentTeam()->where('uuid', $uuid)->firstOrFail();
+        Gate::authorize('view', $project);
+        $key = ['user_id' => auth()->id(), 'project_id' => $project->id];
+        $pins = DB::table('project_user_pins');
+
+        if ($pinned) {
+            $pins->insertOrIgnore($key);
+        } else {
+            $pins->where($key)->delete();
+        }
+    }
+
     public function render(): View
     {
+        $pins = DB::table('project_user_pins')->where('user_id', auth()->id())
+            ->whereIn('project_id', $this->projects->modelKeys())->pluck('project_id')->flip();
+
         return view('livewire.project.index', [
             'runtimeStatuses' => app(ProjectRuntimeStatus::class)->forCurrentTeam(),
-            'projectsJs' => $this->projects->map(function (Project $project): array {
+            'projectsJs' => $this->projects->map(function (Project $project) use ($pins): array {
                 $firstEnvironment = $project->environments->first();
                 $resourceCount = collect([
                     $project->applications_count,
@@ -72,6 +92,7 @@ class Index extends Component
                 return [
                     'uuid' => $project->uuid,
                     'name' => $project->name,
+                    'pinned' => $pins->has($project->id),
                     'description' => $project->description,
                     'iconUrl' => $project->icon_path ? project_icon_url($project) : null,
                     'href' => $project->navigateTo(),
