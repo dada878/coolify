@@ -9,6 +9,7 @@ use App\Models\Server;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -90,4 +91,33 @@ it('refreshes runtime counts for the projects displayed on the dashboard', funct
         ->call('setProjectSort', 'name-desc')
         ->assertSet('projectRuntimeStatuses.'.$projects->last()->uuid, ['state' => 'Empty', 'running' => 0, 'total' => 0]);
     expect(array_keys($dashboard->get('projectRuntimeStatuses')))->not->toContain($first->uuid);
+});
+
+it('ranks all projects by running count, reorders after a refresh, and remembers the dashboard sort', function () {
+    $projects = collect(range(1, Dashboard::ITEM_LIMIT + 1))->map(fn (int $n) => Project::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => sprintf('runtime-%02d', $n),
+    ]));
+    $apps = collect([8, 8, 7, 0])->map(fn (int $index) => Application::factory()->create([
+        'environment_id' => $projects[$index]->environments()->firstOrFail()->id,
+    ]));
+    $apps->each(fn ($app) => $app->update(['status' => 'running:healthy']));
+
+    $dashboard = Livewire::test(Dashboard::class)->call('setProjectSort', 'running-desc')
+        ->assertSeeHtml('aria-label="Sort by status, sorted descending"')
+        ->assertViewHas('dashboardProjects', fn ($rows) => $rows->pluck('name')->take(3)->all() === ['runtime-09', 'runtime-01', 'runtime-08'])
+        ->assertViewHas('projectResourceCounts', fn ($counts) => $counts[$projects[8]->id] === 2);
+
+    $cookie = 'coolify_'.$this->user->id.'_dashboard_projects_sort';
+    expect(Cookie::queued($cookie)?->getValue())->toBe('running-desc');
+    $this->withCookie($cookie, 'running-desc')->get(route('dashboard'))->assertOk()
+        ->assertSeeHtml('aria-label="Sort by status, sorted descending"');
+
+    $apps->take(2)->each(fn ($app) => $app->update(['status' => 'exited:unhealthy']));
+    $dashboard->call('refreshProjectStatuses')
+        ->assertViewHas('dashboardProjects', fn ($rows) => $rows->pluck('name')->take(2)->all() === ['runtime-01', 'runtime-08'])
+        ->assertDontSee('runtime-09')
+        ->call('setProjectSort', 'running-asc')
+        ->assertSeeHtml('aria-label="Sort by status, sorted ascending"')
+        ->assertViewHas('dashboardProjects', fn ($rows) => $rows->first()->name === 'runtime-02' && $rows->last()->name === 'runtime-01');
 });
