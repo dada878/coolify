@@ -71,7 +71,7 @@
                             x-on:keydown.home.prevent="$focus.within($el).first()"
                             x-on:keydown.end.prevent="$focus.within($el).last()"
                             x-on:keydown.escape.stop.prevent="close(); $refs.statusButton.focus()"
-                            x-on:focusout="if (!$el.contains($event.relatedTarget)) close()">
+                            x-on:focusout="if (!$el.contains($event.relatedTarget) && $event.relatedTarget !== $refs.statusButton) close()">
                             <template x-for="(label, value) in runtimeOptions" :key="value">
                                 <button type="button" role="option" tabindex="-1" class="listbox-option"
                                     :aria-selected="runtimeFilter === value"
