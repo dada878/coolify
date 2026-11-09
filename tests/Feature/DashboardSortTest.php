@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Dashboard;
+use App\Livewire\Project\Index;
 use App\Models\Application;
 use App\Models\InstanceSettings;
 use App\Models\PrivateKey;
@@ -28,7 +29,7 @@ beforeEach(function () {
     session(['currentTeam' => $this->team]);
 });
 
-it('sorts all projects before it limits the dashboard list', function () {
+it('supplies every accessible project for sorting before the browser limits the dashboard list', function () {
     foreach (range(1, Dashboard::ITEM_LIMIT + 1) as $number) {
         Project::factory()->create([
             'team_id' => $this->team->id,
@@ -38,13 +39,10 @@ it('sorts all projects before it limits the dashboard list', function () {
     }
 
     Livewire::test(Dashboard::class)
-        ->assertDontSee('sort-project-09')
+        ->assertViewHas('projectsJs', fn ($rows) => count($rows) === Dashboard::ITEM_LIMIT + 1)
         ->call('setProjectSort', 'name-desc')
         ->assertSet('projectSort', 'name-desc')
-        ->assertSeeInOrder(['sort-project-09', 'sort-project-08', 'sort-project-02'])
-        ->assertDontSee('sort-project-01')
         ->call('setProjectSort', 'description-asc')
-        ->assertSeeInOrder(['sort-project-09', 'sort-project-08'])
         ->call('setProjectSort', 'environments-desc')
         ->assertSet('projectSort', 'description-asc');
 });
@@ -71,7 +69,7 @@ it('sorts servers by name and status', function () {
         ->assertSet('serverSort', 'status-asc');
 });
 
-it('refreshes runtime counts for the projects displayed on the dashboard', function () {
+it('refreshes runtime counts across every accessible project so a sort can change the visible eight', function () {
     $projects = collect(range(1, Dashboard::ITEM_LIMIT + 1))->map(fn (int $n) => Project::factory()->create([
         'team_id' => $this->team->id,
         'name' => sprintf('project-%02d', $n),
@@ -82,42 +80,30 @@ it('refreshes runtime counts for the projects displayed on the dashboard', funct
 
     $dashboard = Livewire::test(Dashboard::class)
         ->assertSet('projectRuntimeStatuses.'.$first->uuid, ['state' => 'Running', 'running' => 1, 'total' => 1]);
-    expect(array_keys($dashboard->get('projectRuntimeStatuses')))->toHaveCount(Dashboard::ITEM_LIMIT)
-        ->not->toContain($projects->last()->uuid);
+    expect(array_keys($dashboard->get('projectRuntimeStatuses')))->toHaveCount(Dashboard::ITEM_LIMIT + 1)
+        ->toContain($projects->last()->uuid);
 
     $app->update(['status' => 'exited:unhealthy']);
     $dashboard->call('refreshProjectStatuses')
         ->assertSet('projectRuntimeStatuses.'.$first->uuid, ['state' => 'Stopped', 'running' => 0, 'total' => 1])
         ->call('setProjectSort', 'name-desc')
         ->assertSet('projectRuntimeStatuses.'.$projects->last()->uuid, ['state' => 'Empty', 'running' => 0, 'total' => 0]);
-    expect(array_keys($dashboard->get('projectRuntimeStatuses')))->not->toContain($first->uuid);
 });
 
-it('ranks all projects by running count, reorders after a refresh, and remembers the dashboard sort', function () {
-    $projects = collect(range(1, Dashboard::ITEM_LIMIT + 1))->map(fn (int $n) => Project::factory()->create([
-        'team_id' => $this->team->id,
-        'name' => sprintf('runtime-%02d', $n),
-    ]));
-    $apps = collect([8, 8, 7, 0])->map(fn (int $index) => Application::factory()->create([
-        'environment_id' => $projects[$index]->environments()->firstOrFail()->id,
-    ]));
-    $apps->each(fn ($app) => $app->update(['status' => 'running:healthy']));
-
-    $dashboard = Livewire::test(Dashboard::class)->call('setProjectSort', 'running-desc')
-        ->assertSeeHtml('aria-label="Sort by status, sorted descending"')
-        ->assertViewHas('dashboardProjects', fn ($rows) => $rows->pluck('name')->take(3)->all() === ['runtime-09', 'runtime-01', 'runtime-08'])
-        ->assertViewHas('projectResourceCounts', fn ($counts) => $counts[$projects[8]->id] === 2);
+it('restores the dashboard sort and uses the same personal pins as Projects', function () {
+    $project = Project::factory()->create(['team_id' => $this->team->id]);
+    Livewire::test(Dashboard::class)->call('setProjectSort', 'running-desc')
+        ->assertSet('projectSort', 'running-desc')
+        ->call('setProjectPinned', $project->uuid, true);
 
     $cookie = 'coolify_'.$this->user->id.'_dashboard_projects_sort';
     expect(Cookie::queued($cookie)?->getValue())->toBe('running-desc');
     $this->withCookie($cookie, 'running-desc')->get(route('dashboard'))->assertOk()
-        ->assertSeeHtml('aria-label="Sort by status, sorted descending"');
-
-    $apps->take(2)->each(fn ($app) => $app->update(['status' => 'exited:unhealthy']));
-    $dashboard->call('refreshProjectStatuses')
-        ->assertViewHas('dashboardProjects', fn ($rows) => $rows->pluck('name')->take(2)->all() === ['runtime-01', 'runtime-08'])
-        ->assertDontSee('runtime-09')
-        ->call('setProjectSort', 'running-asc')
-        ->assertSeeHtml('aria-label="Sort by status, sorted ascending"')
-        ->assertViewHas('dashboardProjects', fn ($rows) => $rows->first()->name === 'runtime-02' && $rows->last()->name === 'runtime-01');
+        ->assertSee('projectListControls(', false);
+    Livewire::withCookies([$cookie => 'running-desc'])->test(Dashboard::class)
+        ->assertSet('projectSort', 'running-desc');
+    Livewire::test(Index::class)
+        ->assertViewHas('projectsJs', fn ($rows) => $rows[0]['pinned'] === true)
+        ->call('setProjectPinned', $project->uuid, false);
+    Livewire::test(Dashboard::class)->assertViewHas('projectsJs', fn ($rows) => $rows[0]['pinned'] === false);
 });

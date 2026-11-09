@@ -156,8 +156,10 @@
         </div>
 
         <div class="flex min-w-0 flex-col gap-8">
-        <section class="@container mb-0! min-w-0" @if ($dashboardProjects->isNotEmpty()) wire:poll.30s.visible="refreshProjectStatuses" @endif
+        <section class="@container mb-0! min-w-0" @if ($projects->isNotEmpty()) wire:poll.30s.visible="refreshProjectStatuses" @endif
             x-data="{
+            ...projectListControls(@js($projectsJs), @js($projectSort), $persist(null).as(@js('coolify.dashboard.pending-sort.'.auth()->id())).using(sessionStorage), @js($projectSortOptions), 'setProjectSort'),
+            get visibleProjects() { return this.sortProjects(this.projects).slice(0, {{ $dashboardItemLimit }}) },
             get runtimeStatuses() { return this.$wire.projectRuntimeStatuses },
             viewMode: @js($this->listView('dashboard_projects', 'table')),
             setViewMode(mode) {
@@ -183,178 +185,88 @@
                 @endcan
                 {{-- The dashboard canvas link lives here, so it never adds a row above the page. --}}
                 <x-slot:actions>
-                    @if ($dashboardProjects->isNotEmpty())
+                    @if ($projects->isNotEmpty())
                         <div x-cloak x-show="viewMode === 'grid'">
                             <x-table.sort-header label="Status" asc="running-asc" desc="running-desc" first="desc"
-                                action="setProjectSort" :current="$projectSort" title="Sort by number of running resources" />
+                                model="sortBy" title="Sort by number of running resources" />
                         </div>
                     @endif
-                    <x-canvas-view-toggle :views="$dashboardProjects->isNotEmpty() ? null : []"
+                    <x-canvas-view-toggle :views="$projects->isNotEmpty() ? null : []"
                         :list-url="route('dashboard')" :canvas-url="route('dashboard.canvas')" />
                 </x-slot:actions>
             </x-section-heading>
 
-            @if ($dashboardProjects->isEmpty())
+            @if ($projects->isEmpty())
                 <x-empty title="No projects yet"
                     description="Create your first deployment workspace."
                     icon-name="projects" size="sm" />
             @else
                 <div x-cloak x-show="viewMode === 'grid'"
                     class="grid min-w-0 grid-cols-1 gap-3 @lg:grid-cols-2 @4xl:grid-cols-4">
-                    @foreach ($dashboardProjects as $project)
-                        @php
-                            $firstEnvironment = $project->environments->first();
-                            $resourceCount = $projectResourceCounts[$project->id];
-                        @endphp
-
-                        <article wire:key="dashboard-project-card-{{ $project->uuid }}" x-data="{ project: { uuid: @js($project->uuid) } }"
-                            class="group relative flex min-h-28 min-w-0 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]">
-                            <a href="{{ $project->navigateTo() }}" {{ wireNavigate() }}
-                                class="absolute inset-0 rounded-xl"
-                                aria-label="Open {{ $project->name }}"></a>
-
-                            <div class="flex min-w-0 items-start gap-3">
-                                <div
-                                    class="resource-glyph flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500">
-                                    @if ($project->icon_path)
-                                        <img src="{{ project_icon_url($project) }}"
-                                            alt="{{ $project->name }} icon"
-                                            class="h-full w-full rounded-lg object-cover">
-                                    @else
-                                        <x-reicon name="projects" class="size-4" />
-                                    @endif
-                                </div>
-                                <div class="min-w-0 flex-1 self-center">
-                                    <h3
-                                        class="truncate text-[13px]! leading-4! font-semibold! text-black dark:text-fg">
-                                        {{ $project->name }}
-                                    </h3>
-                                    @if (filled($project->description))
-                                        <p class="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-fg-faint">
-                                            {{ $project->description }}
-                                        </p>
-                                    @endif
-                                </div>
-                            </div>
-
-                            <div class="my-2">
-                                @include('livewire.project.runtime-badge')
-                            </div>
-                            <div class="mt-auto flex items-center justify-between gap-3 border-t border-neutral-100 pt-2.5 dark:border-white/[0.06]">
-                                <p class="project-card-stats relative z-10 min-w-0">
-                                    <b>{{ $project->environments->count() }}</b>
-                                    {{ $project->environments->count() === 1 ? 'environment' : 'environments' }}
-                                    <span class="project-card-stats-dot" aria-hidden="true">&middot;</span>
-                                    <b>{{ $resourceCount }}</b>
-                                    {{ $resourceCount === 1 ? 'resource' : 'resources' }}
-                                </p>
-
-                                <div class="relative z-10 flex shrink-0 items-center gap-0.5">
-                                    @if ($firstEnvironment)
-                                        @can('createAnyResource')
-                                            <a href="{{ route('project.resource.create', [
-                                                'project_uuid' => $project->uuid,
-                                                'environment_uuid' => $firstEnvironment->uuid,
-                                            ]) }}"
-                                                {{ wireNavigate() }}
-                                                class="{{ $iconButton }}"
-                                                title="Add resource"
-                                                aria-label="Add resource to {{ $project->name }}">
-                                                <x-reicon name="plus" class="size-3" />
-                                            </a>
-                                        @endcan
-                                    @endif
-                                    @can('update', $project)
-                                        <a href="{{ route('project.edit', ['project_uuid' => $project->uuid]) }}"
-                                            {{ wireNavigate() }}
-                                            class="{{ $iconButton }}"
-                                            title="Project settings"
-                                            aria-label="Open settings for {{ $project->name }}">
-                                            <x-reicon name="settings" class="size-3" />
-                                        </a>
-                                    @endcan
-                                </div>
-                            </div>
-                        </article>
-                    @endforeach
+                    <template x-for="project in visibleProjects" :key="project.uuid">
+                        @include('livewire.project.list-card')
+                    </template>
                 </div>
 
-                <div x-show="viewMode === 'table'" class="{{ $tableShell }} transition-opacity" wire:loading.class="opacity-50 pointer-events-none"
-                    wire:target="setProjectSort">
+                <div x-show="viewMode === 'table'" class="{{ $tableShell }}">
                     <div class="dashboard-project-runtime-row {{ $tableHead }}">
                         <x-table.sort-header label="Project" asc="name-asc" desc="name-desc"
-                            action="setProjectSort" :current="$projectSort" />
+                            model="sortBy" />
                         <x-table.sort-header label="Status" asc="running-asc" desc="running-desc" first="desc"
-                            action="setProjectSort" :current="$projectSort" title="Sort by number of running resources" />
+                            model="sortBy" title="Sort by number of running resources" />
                         <x-table.sort-header class="dashboard-project-contents" label="Contents" asc="resources-asc" desc="resources-desc" first="desc"
-                            action="setProjectSort" :current="$projectSort" title="Sort by resource count" />
+                            model="sortBy" title="Sort by resource count" />
                         <div class="dashboard-project-description">
                             <x-table.sort-header label="Description" asc="description-asc" desc="description-desc"
-                                action="setProjectSort" :current="$projectSort" />
+                                model="sortBy" />
                         </div>
                         <span class="text-right">Actions</span>
                     </div>
-                    @foreach ($dashboardProjects as $project)
-                        @php
-                            $firstEnvironment = $project->environments->first();
-                        @endphp
-                        <div wire:key="dashboard-project-row-{{ $project->uuid }}" x-data="{ project: { uuid: @js($project->uuid) } }"
+                    <template x-for="project in visibleProjects" :key="project.uuid">
+                        <div
                             class="relative dashboard-project-runtime-row {{ $tableRow }}">
-                            <a href="{{ $project->navigateTo() }}" {{ wireNavigate() }}
-                                class="absolute inset-0" aria-label="Open {{ $project->name }}"></a>
+                            <a :href="project.href" {{ wireNavigate() }}
+                                class="absolute inset-0" :aria-label="`Open ${project.name}`"></a>
                             <div class="flex min-w-0 items-center gap-3">
                                 <div
                                     class="resource-glyph flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500">
-                                    @if ($project->icon_path)
-                                        <img src="{{ project_icon_url($project) }}" alt="{{ $project->name }} icon"
+                                    <template x-if="project.iconUrl">
+                                        <img :src="project.iconUrl" :alt="`${project.name} icon`"
                                             class="h-full w-full rounded-lg object-cover">
-                                    @else
+                                    </template>
+                                    <template x-if="!project.iconUrl">
                                         <x-reicon name="projects" class="size-4" />
-                                    @endif
+                                    </template>
                                 </div>
-                                <p class="truncate text-[13px] font-semibold text-black dark:text-fg">
-                                    {{ $project->name }}
-                                </p>
+                                <p class="truncate text-[13px] font-semibold text-black dark:text-fg" x-text="project.name"></p>
                             </div>
                             <div>@include('livewire.project.runtime-badge')</div>
                             <div class="dashboard-project-contents relative z-10 flex w-fit items-center gap-3 font-medium text-neutral-600 dark:text-fg-dim">
                                 <span class="inline-flex items-center gap-1" data-tooltip="Environments"
                                     aria-label="Environments">
                                     <x-reicon name="layers" class="size-3.5 text-neutral-400 dark:text-fg-faint" />
-                                    {{ $project->environments->count() }}
+                                    <span x-text="project.environmentCount"></span>
                                 </span>
                                 <span class="inline-flex items-center gap-1" data-tooltip="Resources"
                                     aria-label="Resources">
                                     <x-reicon name="grid" class="size-3.5 text-neutral-400 dark:text-fg-faint" />
-                                    {{ $projectResourceCounts[$project->id] }}
+                                    <span x-text="project.resourceCount"></span>
                                 </span>
                             </div>
-                            <p class="dashboard-project-description truncate text-neutral-500 dark:text-fg-dim">
-                                {{ filled($project->description) ? $project->description : '-' }}
-                            </p>
+                            <p class="dashboard-project-description truncate text-neutral-500 dark:text-fg-dim" x-text="project.description || '-'"></p>
                             <div class="relative z-10 flex items-center justify-end gap-0.5">
-                                @if ($firstEnvironment)
-                                    @can('createAnyResource')
-                                        <a href="{{ route('project.resource.create', [
-                                            'project_uuid' => $project->uuid,
-                                            'environment_uuid' => $firstEnvironment->uuid,
-                                        ]) }}"
-                                            {{ wireNavigate() }} class="{{ $iconButton }}" title="Add resource"
-                                            aria-label="Add resource to {{ $project->name }}">
-                                            <x-reicon name="plus" class="size-3" />
-                                        </a>
-                                    @endcan
-                                @endif
-                                @can('update', $project)
-                                    <a href="{{ route('project.edit', ['project_uuid' => $project->uuid]) }}"
-                                        {{ wireNavigate() }} class="{{ $iconButton }}" title="Project settings"
-                                        aria-label="Open settings for {{ $project->name }}">
-                                        <x-reicon name="settings" class="size-3" />
-                                    </a>
-                                @endcan
+                                @include('livewire.project.pin-button')
+                                <a x-show="project.addResourceHref" :href="project.addResourceHref" {{ wireNavigate() }}
+                                    class="{{ $iconButton }}" title="Add resource" :aria-label="`Add resource to ${project.name}`">
+                                    <x-reicon name="plus" class="size-3" />
+                                </a>
+                                <a x-show="project.settingsHref" :href="project.settingsHref" {{ wireNavigate() }}
+                                    class="{{ $iconButton }}" title="Project settings" :aria-label="`Open settings for ${project.name}`">
+                                    <x-reicon name="settings" class="size-3" />
+                                </a>
                             </div>
                         </div>
-                    @endforeach
+                    </template>
                 </div>
             @endif
         </section>
@@ -563,19 +475,21 @@
     </div>
 </div>
 
+@include('livewire.project.list-controls')
+
 @assets
 <style>
     .dashboard-project-runtime-row {
         display: grid;
-        grid-template-columns: minmax(0, 1.3fr) 7rem 5rem minmax(0, 1fr) 4rem;
+        grid-template-columns: minmax(0, 1.3fr) 7rem 5rem minmax(0, 1fr) 5.5rem;
         column-gap: 1rem;
     }
     @container (max-width: 43rem) {
-        .dashboard-project-runtime-row { grid-template-columns: minmax(0, 1fr) 7rem 5rem 4rem; }
+        .dashboard-project-runtime-row { grid-template-columns: minmax(0, 1fr) 7rem 5rem 5.5rem; }
         .dashboard-project-runtime-row .dashboard-project-description { display: none; }
     }
     @container (max-width: 30rem) {
-        .dashboard-project-runtime-row { grid-template-columns: minmax(0, 1fr) 6rem 3.5rem; column-gap: .5rem; }
+        .dashboard-project-runtime-row { grid-template-columns: minmax(0, 1fr) 6rem 5rem; column-gap: .5rem; }
         .dashboard-project-runtime-row .dashboard-project-contents { display: none; }
     }
 </style>

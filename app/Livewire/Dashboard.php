@@ -2,9 +2,9 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ListsProjects;
 use App\Livewire\Concerns\RemembersCanvasView;
 use App\Models\PrivateKey;
-use App\Models\Project;
 use App\Models\Server;
 use App\Models\Star;
 use App\Models\TeamInvitation;
@@ -15,13 +15,13 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use App\Services\ProjectRuntimeStatus;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cookie;
-use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 class Dashboard extends Component
 {
-    use RemembersCanvasView;
+    use ListsProjects, RemembersCanvasView;
 
     /** The dashboard shows only the first projects and servers of the sorted lists. */
     public const ITEM_LIMIT = 8;
@@ -76,58 +76,29 @@ class Dashboard extends Component
         }
     }
 
-    #[Computed]
-    public function projects(): Collection
-    {
-        return Project::ownedByCurrentTeam()
-            ->with(['environments:id,uuid,name,project_id'])
-            ->withCount([
-                'applications',
-                'services',
-                'postgresqls',
-                'redis',
-                'keydbs',
-                'dragonflies',
-                'clickhouses',
-                'mongodbs',
-                'mysqls',
-                'mariadbs',
-                'sqlites',
-            ])
-            ->get();
-    }
-
     public function render()
     {
-        $runtime = app(ProjectRuntimeStatus::class);
-        $statuses = str_starts_with($this->projectSort, 'running-') ? $runtime->forCurrentTeam() : null;
-        $dashboardProjects = $this->sortedProjects($statuses ?? [])->take(self::ITEM_LIMIT);
         $dashboardServers = $this->sortedServers()->take(self::ITEM_LIMIT);
-        $visibleUuids = $dashboardProjects->pluck('uuid')->all();
-        $this->projectRuntimeStatuses = $statuses === null
-            ? $runtime->forCurrentTeam($visibleUuids)
-            : array_intersect_key($statuses, array_flip($visibleUuids));
+        $this->projectRuntimeStatuses = app(ProjectRuntimeStatus::class)->forCurrentTeam();
 
         return view('livewire.dashboard', [
             'projects' => $this->projects,
             'pendingInvitations' => $this->pendingInvitations(),
             'starredResources' => $this->starredResources(),
-            'dashboardProjects' => $dashboardProjects,
+            'projectsJs' => $this->projectRows(),
+            'projectSortOptions' => collect(self::PROJECT_SORT_COLUMNS)->flatMap(fn ($column) => [$column.'-asc', $column.'-desc'])->all(),
             'dashboardServers' => $dashboardServers,
-            'projectResourceCounts' => $dashboardProjects->mapWithKeys(fn (Project $project) => [$project->id => $this->projectResourceCount($project)]),
             'serverStatuses' => $dashboardServers->mapWithKeys(fn (Server $server) => [$server->id => $this->serverStatus($server)]),
         ]);
     }
 
+    #[Renderless]
     public function refreshProjectStatuses(ProjectRuntimeStatus $runtime): void
     {
-        // Running counts can move any team project into the dashboard's top eight.
-        if (! str_starts_with($this->projectSort, 'running-')) {
-            $this->projectRuntimeStatuses = $runtime->forCurrentTeam(array_keys($this->projectRuntimeStatuses));
-            $this->skipRender();
-        }
+        $this->projectRuntimeStatuses = $runtime->forCurrentTeam();
     }
 
+    #[Renderless]
     public function setProjectSort(string $sort): void
     {
         if ($this->isValidSort($sort, self::PROJECT_SORT_COLUMNS)) {
@@ -212,14 +183,6 @@ class Dashboard extends Component
             ->values();
     }
 
-    private function projectResourceCount(Project $project): int
-    {
-        return $project->applications_count + $project->services_count + $project->postgresqls_count
-            + $project->redis_count + $project->keydbs_count + $project->dragonflies_count
-            + $project->clickhouses_count + $project->mongodbs_count + $project->mysqls_count
-            + $project->mariadbs_count + $project->sqlites_count;
-    }
-
     /**
      * @return array{0: string, 1: 'success'|'warning'|'error'} label and badge type
      */
@@ -236,19 +199,6 @@ class Dashboard extends Component
             $proxyNeedsAttention || $sentinelNeedsAttention => ['Attention required', 'warning'],
             default => ['Ready', 'success'],
         };
-    }
-
-    /**
-     * @return Collection<int, Project>
-     */
-    private function sortedProjects(array $statuses): Collection
-    {
-        return $this->sortItems($this->projects, $this->projectSort, fn (Project $project, string $column): int|string => match ($column) {
-            'resources' => $this->projectResourceCount($project),
-            'running' => $statuses[$project->uuid]['running'] ?? 0,
-            'description' => (string) $project->description,
-            default => $project->name,
-        });
     }
 
     /**
