@@ -12,9 +12,15 @@ class ProjectRuntimeStatus
      * Count each resource once across all accessible environments. A Compose
      * service contributes its own aggregate status, just like the resource list.
      */
-    public function forCurrentTeam(): array
+    public function forCurrentTeam(?array $projectUuids = null): array
     {
-        $projects = Project::ownedByCurrentTeam()->pluck('uuid', 'id');
+        $projects = Project::ownedByCurrentTeam()
+            ->when($projectUuids !== null, fn ($query) => $query->whereIn('uuid', $projectUuids))
+            ->pluck('uuid', 'id');
+        if ($projects->isEmpty()) {
+            return [];
+        }
+
         $relations = [
             'applications:id,environment_id,status',
             'applications.additional_servers:id',

@@ -156,7 +156,9 @@
         </div>
 
         <div class="flex min-w-0 flex-col gap-8">
-        <section class="@container mb-0! min-w-0" x-data="{
+        <section class="@container mb-0! min-w-0" @if ($dashboardProjects->isNotEmpty()) wire:poll.30s.visible="refreshProjectStatuses" @endif
+            x-data="{
+            get runtimeStatuses() { return this.$wire.projectRuntimeStatuses },
             viewMode: @js($this->listView('dashboard_projects', 'table')),
             setViewMode(mode) {
                 this.viewMode = mode;
@@ -199,7 +201,7 @@
                             $resourceCount = $projectResourceCounts[$project->id];
                         @endphp
 
-                        <article
+                        <article wire:key="dashboard-project-card-{{ $project->uuid }}" x-data="{ project: { uuid: @js($project->uuid) } }"
                             class="group relative flex min-h-28 min-w-0 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]">
                             <a href="{{ $project->navigateTo() }}" {{ wireNavigate() }}
                                 class="absolute inset-0 rounded-xl"
@@ -229,6 +231,9 @@
                                 </div>
                             </div>
 
+                            <div class="my-2">
+                                @include('livewire.project.runtime-badge')
+                            </div>
                             <div class="mt-auto flex items-center justify-between gap-3 border-t border-neutral-100 pt-2.5 dark:border-white/[0.06]">
                                 <p class="project-card-stats relative z-10 min-w-0">
                                     <b>{{ $project->environments->count() }}</b>
@@ -270,12 +275,13 @@
 
                 <div x-show="viewMode === 'table'" class="{{ $tableShell }} transition-opacity" wire:loading.class="opacity-50 pointer-events-none"
                     wire:target="setProjectSort">
-                    <div class="grid grid-cols-[minmax(0,1fr)_7rem_4.5rem] gap-4 @2xl:min-w-[560px] @2xl:grid-cols-[minmax(0,1.2fr)_7rem_minmax(0,1.5fr)_4.5rem] {{ $tableHead }}">
+                    <div class="dashboard-project-runtime-row {{ $tableHead }}">
                         <x-table.sort-header label="Project" asc="name-asc" desc="name-desc"
                             action="setProjectSort" :current="$projectSort" />
-                        <x-table.sort-header label="Contents" asc="resources-asc" desc="resources-desc" first="desc"
+                        <span>Status</span>
+                        <x-table.sort-header class="dashboard-project-contents" label="Contents" asc="resources-asc" desc="resources-desc" first="desc"
                             action="setProjectSort" :current="$projectSort" title="Sort by resource count" />
-                        <div class="hidden @2xl:block">
+                        <div class="dashboard-project-description">
                             <x-table.sort-header label="Description" asc="description-asc" desc="description-desc"
                                 action="setProjectSort" :current="$projectSort" />
                         </div>
@@ -285,8 +291,8 @@
                         @php
                             $firstEnvironment = $project->environments->first();
                         @endphp
-                        <div wire:key="dashboard-project-row-{{ $project->uuid }}"
-                            class="relative grid grid-cols-[minmax(0,1fr)_7rem_4.5rem] gap-4 @2xl:min-w-[560px] @2xl:grid-cols-[minmax(0,1.2fr)_7rem_minmax(0,1.5fr)_4.5rem] {{ $tableRow }}">
+                        <div wire:key="dashboard-project-row-{{ $project->uuid }}" x-data="{ project: { uuid: @js($project->uuid) } }"
+                            class="relative dashboard-project-runtime-row {{ $tableRow }}">
                             <a href="{{ $project->navigateTo() }}" {{ wireNavigate() }}
                                 class="absolute inset-0" aria-label="Open {{ $project->name }}"></a>
                             <div class="flex min-w-0 items-center gap-3">
@@ -303,7 +309,8 @@
                                     {{ $project->name }}
                                 </p>
                             </div>
-                            <div class="relative z-10 flex w-fit items-center gap-3 font-medium text-neutral-600 dark:text-fg-dim">
+                            <div>@include('livewire.project.runtime-badge')</div>
+                            <div class="dashboard-project-contents relative z-10 flex w-fit items-center gap-3 font-medium text-neutral-600 dark:text-fg-dim">
                                 <span class="inline-flex items-center gap-1" data-tooltip="Environments"
                                     aria-label="Environments">
                                     <x-reicon name="layers" class="size-3.5 text-neutral-400 dark:text-fg-faint" />
@@ -315,7 +322,7 @@
                                     {{ $projectResourceCounts[$project->id] }}
                                 </span>
                             </div>
-                            <p class="hidden truncate text-neutral-500 @2xl:block dark:text-fg-dim">
+                            <p class="dashboard-project-description truncate text-neutral-500 dark:text-fg-dim">
                                 {{ filled($project->description) ? $project->description : '-' }}
                             </p>
                             <div class="relative z-10 flex items-center justify-end gap-0.5">
@@ -548,3 +555,21 @@
         </div>
     </div>
 </div>
+
+@assets
+<style>
+    .dashboard-project-runtime-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) 7rem 5rem minmax(0, 1fr) 4rem;
+        column-gap: 1rem;
+    }
+    @container (max-width: 43rem) {
+        .dashboard-project-runtime-row { grid-template-columns: minmax(0, 1fr) 7rem 5rem 4rem; }
+        .dashboard-project-runtime-row .dashboard-project-description { display: none; }
+    }
+    @container (max-width: 30rem) {
+        .dashboard-project-runtime-row { grid-template-columns: minmax(0, 1fr) 6rem 3.5rem; column-gap: .5rem; }
+        .dashboard-project-runtime-row .dashboard-project-contents { display: none; }
+    }
+</style>
+@endassets
