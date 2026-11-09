@@ -2,7 +2,7 @@
     class="card-icon-button flex size-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:hover:bg-white/[0.06] dark:hover:text-fg"
     :aria-label="(project.pinned ? 'Unpin ' : 'Pin ') + project.name"
     :title="project.pinned ? 'Unpin project' : 'Pin project to top'"
-    :aria-pressed="project.pinned" :disabled="project.savingPin"
+    :aria-pressed="project.pinned" :disabled="project.savingPin === true"
     x-on:click="toggleProjectPin(project)">
     <svg class="size-3.5" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"
         stroke-linejoin="round" :fill="project.pinned ? 'currentColor' : 'none'"
