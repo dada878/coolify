@@ -12,8 +12,10 @@ use App\Services\Access\AccessResolver;
 use App\Services\ImageScan\TeamVulnerabilities;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use App\Services\ProjectRuntimeStatus;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 class Dashboard extends Component
@@ -32,6 +34,9 @@ class Dashboard extends Component
     public Collection $servers;
 
     public Collection $privateKeys;
+
+    #[Locked]
+    public array $projectRuntimeStatuses = [];
 
     #[Locked]
     public string $projectSort = 'name-asc';
@@ -88,6 +93,7 @@ class Dashboard extends Component
     {
         $dashboardProjects = $this->sortedProjects()->take(self::ITEM_LIMIT);
         $dashboardServers = $this->sortedServers()->take(self::ITEM_LIMIT);
+        $this->projectRuntimeStatuses = app(ProjectRuntimeStatus::class)->forCurrentTeam($dashboardProjects->pluck('uuid')->all());
 
         return view('livewire.dashboard', [
             'pendingInvitations' => $this->pendingInvitations(),
@@ -97,6 +103,12 @@ class Dashboard extends Component
             'projectResourceCounts' => $dashboardProjects->mapWithKeys(fn (Project $project) => [$project->id => $this->projectResourceCount($project)]),
             'serverStatuses' => $dashboardServers->mapWithKeys(fn (Server $server) => [$server->id => $this->serverStatus($server)]),
         ]);
+    }
+
+    #[Renderless]
+    public function refreshProjectStatuses(ProjectRuntimeStatus $runtime): void
+    {
+        $this->projectRuntimeStatuses = $runtime->forCurrentTeam(array_keys($this->projectRuntimeStatuses));
     }
 
     public function setProjectSort(string $sort): void

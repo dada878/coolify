@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Dashboard;
+use App\Models\Application;
 use App\Models\InstanceSettings;
 use App\Models\PrivateKey;
 use App\Models\Project;
@@ -67,4 +68,26 @@ it('sorts servers by name and status', function () {
         ->assertSeeInOrder(['charlie-host', 'bravo-host', 'alpha-host'])
         ->call('setServerSort', 'status')
         ->assertSet('serverSort', 'status-asc');
+});
+
+it('refreshes runtime counts for the projects displayed on the dashboard', function () {
+    $projects = collect(range(1, Dashboard::ITEM_LIMIT + 1))->map(fn (int $n) => Project::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => sprintf('project-%02d', $n),
+    ]));
+    $first = $projects->first();
+    $app = Application::factory()->create(['environment_id' => $first->environments()->firstOrFail()->id]);
+    $app->update(['status' => 'running:healthy']);
+
+    $dashboard = Livewire::test(Dashboard::class)
+        ->assertSet('projectRuntimeStatuses.'.$first->uuid, ['state' => 'Running', 'running' => 1, 'total' => 1]);
+    expect(array_keys($dashboard->get('projectRuntimeStatuses')))->toHaveCount(Dashboard::ITEM_LIMIT)
+        ->not->toContain($projects->last()->uuid);
+
+    $app->update(['status' => 'exited:unhealthy']);
+    $dashboard->call('refreshProjectStatuses')
+        ->assertSet('projectRuntimeStatuses.'.$first->uuid, ['state' => 'Stopped', 'running' => 0, 'total' => 1])
+        ->call('setProjectSort', 'name-desc')
+        ->assertSet('projectRuntimeStatuses.'.$projects->last()->uuid, ['state' => 'Empty', 'running' => 0, 'total' => 0]);
+    expect(array_keys($dashboard->get('projectRuntimeStatuses')))->not->toContain($first->uuid);
 });
