@@ -186,10 +186,10 @@ it('displays the project icon on the dashboard', function () {
     ])->save();
 
     Livewire::test(Dashboard::class)
-        ->assertSeeHtml('src="'.route('project.icon', [
+        ->assertViewHas('projectsJs', fn ($rows) => $rows[0]['iconUrl'] === route('project.icon', [
             'project_uuid' => $this->project->uuid,
             'v' => $this->project->updated_at->timestamp,
-        ]).'"');
+        ]));
 });
 
 it('displays the project icon in shared variables project views', function () {

@@ -68,7 +68,7 @@ test('admin sees add resource button on dashboard projects', function () {
 
     Livewire::test(Dashboard::class)
         ->assertSee('Test Project')
-        ->assertSee('Add resource to Test Project');
+        ->assertViewHas('projectsJs', fn ($rows) => filled($rows[0]['addResourceHref']));
 });
 
 test('member does not see add resource button on dashboard projects', function () {
@@ -81,7 +81,7 @@ test('member does not see add resource button on dashboard projects', function (
 
     Livewire::test(Dashboard::class)
         ->assertSee('Test Project')
-        ->assertDontSee('Add resource to Test Project')
+        ->assertViewHas('projectsJs', fn ($rows) => $rows[0]['addResourceHref'] === null)
         ->assertDontSee('New Project');
 });
 

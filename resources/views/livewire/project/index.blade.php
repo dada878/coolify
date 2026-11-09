@@ -4,7 +4,7 @@
         Projects | Coolify
     </x-slot>
 
-    <div x-data="projectsIndex(@js($savedSort), @js($sortLabels), $persist(null).as(@js('coolify.projects.pending-sort.'.auth()->id())).using(sessionStorage))"
+    <div x-data="projectsIndex(@js($projectsJs), @js($savedSort), @js($sortLabels), $persist(null).as(@js('coolify.projects.pending-sort.'.auth()->id())).using(sessionStorage))"
         wire:poll.30s.visible="refreshRuntimeStatuses"
         class="w-full">
         <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -115,70 +115,10 @@
                 </div>
             </div>
 
-            <nav x-cloak x-show="pinnedShortcuts.length" aria-label="Pinned projects"
-                class="mb-3 flex min-w-0 items-center gap-2">
-                <span class="shrink-0 text-[12px] font-medium text-neutral-500 dark:text-fg-dim">Pinned</span>
-                <div class="flex min-w-0 items-center gap-2 overflow-x-auto p-1">
-                    <template x-for="project in pinnedShortcuts" :key="project.uuid">
-                        <a :href="project.href" {{ wireNavigate() }} class="button shrink-0" x-text="project.name"></a>
-                    </template>
-                </div>
-            </nav>
             <div x-cloak x-show="viewMode === 'grid'">
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <template x-for="project in paginatedProjects" :key="project.uuid">
-                        <article
-                            class="group relative flex min-h-28 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]">
-                            <a :href="project.href" {{ wireNavigate() }} class="absolute inset-0 rounded-xl"
-                                :aria-label="`Open ${project.name}`"></a>
-                            <div class="flex items-start gap-3">
-                                <div
-                                    class="resource-glyph flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500">
-                                    <template x-if="project.iconUrl">
-                                        <img :src="project.iconUrl" :alt="`${project.name} icon`" class="h-full w-full rounded-lg object-cover">
-                                    </template>
-                                    <template x-if="!project.iconUrl">
-                                        <x-reicon name="projects" class="size-4" />
-                                    </template>
-                                </div>
-                                <div class="min-w-0 flex-1 self-center">
-                                    <h2
-                                        class="truncate text-[13px]! leading-4! font-semibold! text-black dark:text-fg"
-                                        x-text="project.name"></h2>
-                                    <p class="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-fg-faint"
-                                        x-show="project.description?.trim()"
-                                        x-text="project.description"></p>
-                                </div>
-                            </div>
-
-                            <div class="my-2">
-                                @include('livewire.project.runtime-badge')
-                            </div>
-                            <div class="mt-auto flex items-center justify-between gap-3 border-t border-neutral-100 pt-2.5 dark:border-white/[0.06]">
-                                <p class="project-card-stats relative z-10 min-w-0">
-                                    <b x-text="project.environmentCount"></b>
-                                    <span x-text="Number(project.environmentCount) === 1 ? 'environment' : 'environments'"></span>
-                                    <span class="project-card-stats-dot" aria-hidden="true">&middot;</span>
-                                    <b x-text="project.resourceCount"></b>
-                                    <span x-text="Number(project.resourceCount) === 1 ? 'resource' : 'resources'"></span>
-                                </p>
-
-                                <div class="relative z-10 flex shrink-0 items-center gap-0.5">
-                                    @include('livewire.project.pin-button')
-                                    <a x-show="project.addResourceHref" :href="project.addResourceHref"
-                                        {{ wireNavigate() }}
-                                        class="card-icon-button flex size-7.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black"
-                                        title="Add resource" :aria-label="`Add resource to ${project.name}`">
-                                        <x-reicon name="plus" class="size-3" />
-                                    </a>
-                                    <a x-show="project.settingsHref" :href="project.settingsHref" {{ wireNavigate() }}
-                                        class="card-icon-button flex size-7.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black"
-                                        title="Project settings" :aria-label="`Open settings for ${project.name}`">
-                                        <x-reicon name="settings" class="size-3" />
-                                    </a>
-                                </div>
-                            </div>
-                        </article>
+                        @include('livewire.project.list-card')
                     </template>
                 </div>
                 <x-client-pagination total="filteredProjects.length" x-show="filteredProjects.length > 0" class="mt-3 rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
@@ -290,13 +230,13 @@
 </style>
 @endassets
 
+@include('livewire.project.list-controls')
+
 <script>
-    function projectsIndex(savedSort, sortLabels, pendingSort) {
+    function projectsIndex(projects, savedSort, sortLabels, pendingSort) {
         return {
             search: '',
-            sortBy: savedSort,
-            pendingSort,
-            savingSort: false,
+            ...projectListControls(projects, savedSort, pendingSort, Object.keys(sortLabels), 'saveProjectSort'),
             runtimeFilter: 'all',
             runtimeOptions: {
                 all: 'All statuses',
@@ -309,40 +249,9 @@
             viewMode: @js($this->listView('projects', 'grid')),
             page: 1,
             pageSize: 12,
-            projects: @js($projectsJs),
-            init() {
-                // A reload can interrupt a save. Replay only this tab's unconfirmed choice.
-                if (Object.hasOwn(sortLabels, this.pendingSort)) {
-                    this.sortBy = this.pendingSort;
-                    this.flushSort();
-                } else {
-                    this.pendingSort = null;
-                }
-                this.$watch('sortBy', value => {
-                    this.pendingSort = value;
-                    this.flushSort();
-                });
-            },
-            async flushSort() {
-                if (this.savingSort) return;
-                this.savingSort = true;
-                try {
-                    while (this.pendingSort !== null) {
-                        const value = this.pendingSort;
-                        await this.$wire.saveProjectSort(value);
-                        if (this.pendingSort === value) this.pendingSort = null;
-                    }
-                } finally {
-                    this.savingSort = false;
-                }
-            },
             get sortOptions() {
                 const values = new Set(['running-desc', 'name-asc', 'name-desc', 'resources-desc', 'environments-desc', this.sortBy]);
                 return Array.from(values, value => ({ value, label: sortLabels[value] }));
-            },
-            get pinnedShortcuts() {
-                return this.filteredProjects.filter(project => project.pinned)
-                    .sort((a, b) => a.name.localeCompare(b.name));
             },
             get filteredProjects() {
                 const query = this.search.trim().toLowerCase();
@@ -365,35 +274,7 @@
                     return matchesStatus[this.runtimeFilter] && (!query || searchable.includes(query));
                 });
 
-                const [column, direction] = this.sortBy.split('-');
-                const sortValues = {
-                    running: (project) => this.runtimeStatuses[project.uuid]?.running ?? 0,
-                    name: (project) => project.name,
-                    resources: (project) => Number(project.resourceCount),
-                    environments: (project) => Number(project.environmentCount),
-                    created: (project) => Date.parse(project.createdAt) || 0,
-                    description: (project) => project.description || '',
-                };
-                const sortValue = sortValues[column] || sortValues.name;
-                const order = direction === 'desc' ? -1 : 1;
-                const compare = (first, second) => typeof first === 'number' ?
-                    first - second :
-                    first.localeCompare(second);
-
-                return projects.sort((first, second) =>
-                    order * compare(sortValue(first), sortValue(second)) ||
-                    first.name.localeCompare(second.name));
-            },
-            async toggleProjectPin(project) {
-                if (project.savingPin) return;
-                project.savingPin = true;
-                const pinned = !project.pinned;
-                try {
-                    await this.$wire.setProjectPinned(project.uuid, pinned);
-                    project.pinned = pinned;
-                } finally {
-                    project.savingPin = false;
-                }
+                return this.sortProjects(projects);
             },
             get totalPages() {
                 return Math.max(1, Math.ceil(this.filteredProjects.length / this.pageSize));
