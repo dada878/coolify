@@ -52,6 +52,15 @@
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
+                    <select aria-label="Filter projects by runtime status" class="button w-auto!"
+                        x-model="runtimeFilter" x-on:change="page = 1">
+                        <option value="all">All statuses</option>
+                        <option value="running">Has running resources</option>
+                        <option value="partial">Partially running</option>
+                        <option value="attention">Needs attention</option>
+                        <option value="stopped">Stopped</option>
+                        <option value="empty">No resources</option>
+                    </select>
                     <div :class="viewMode === 'grid' ? '' : 'min-[641px]:hidden'">
                         <x-table.dropdown panel-class="w-52!">
                             <x-slot:trigger>
@@ -219,7 +228,7 @@
                 <x-reicon name="search" class="mb-3 size-6 text-neutral-300 dark:text-fg-faint" />
                 <p class="text-[13px] font-medium">No matching projects</p>
                 <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">
-                    Try a different search.
+                    Try changing your search or status filter.
                 </p>
             </div>
         @endif
@@ -232,6 +241,7 @@
             search: '',
             sortBy: 'name-asc',
             sortOpen: false,
+            runtimeFilter: 'all',
             viewMode: @js($this->listView('projects', 'grid')),
             page: 1,
             pageSize: 12,
@@ -261,7 +271,17 @@
                         .join(' ')
                         .toLowerCase();
 
-                    return !query || searchable.includes(query);
+                    const status = this.runtimeStatuses[project.uuid];
+                    const matchesStatus = {
+                        all: true,
+                        running: status?.running > 0,
+                        partial: status?.running > 0 && status.running < status.total,
+                        attention: ['Degraded', 'Partial', 'Unknown'].includes(status?.state),
+                        stopped: status?.state === 'Stopped',
+                        empty: status?.state === 'Empty',
+                    };
+
+                    return matchesStatus[this.runtimeFilter] && (!query || searchable.includes(query));
                 });
 
                 const [column, direction] = this.sortBy.split('-');
