@@ -8,12 +8,27 @@ use App\Services\ProjectRuntimeStatus;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 class Index extends Component
 {
     use RemembersCanvasView;
+
+    private const SORT_LABELS = [
+        'running-desc' => 'Most running resources',
+        'name-asc' => 'Name A–Z',
+        'name-desc' => 'Name Z–A',
+        'resources-desc' => 'Most resources',
+        'environments-desc' => 'Most environments',
+        'running-asc' => 'Fewest running resources',
+        'resources-asc' => 'Fewest resources',
+        'created-asc' => 'Oldest first',
+        'created-desc' => 'Newest first',
+        'description-asc' => 'Description A–Z',
+        'description-desc' => 'Description Z–A',
+    ];
 
     public $projects;
 
@@ -66,12 +81,25 @@ class Index extends Component
         }
     }
 
+    #[Renderless]
+    public function saveProjectSort(string $sort): void
+    {
+        validator(['sort' => $sort], ['sort' => ['required', Rule::in(array_keys(self::SORT_LABELS))]])->validate();
+        DB::table('project_list_sort_preferences')->upsert(
+            [['user_id' => auth()->id(), 'sort' => $sort]], ['user_id'], ['sort']
+        );
+    }
+
     public function render(): View
     {
         $pins = DB::table('project_user_pins')->where('user_id', auth()->id())
             ->whereIn('project_id', $this->projects->modelKeys())->pluck('project_id')->flip();
 
+        $sort = DB::table('project_list_sort_preferences')->where('user_id', auth()->id())->value('sort');
+
         return view('livewire.project.index', [
+            'savedSort' => isset(self::SORT_LABELS[$sort]) ? $sort : 'name-asc',
+            'sortLabels' => self::SORT_LABELS,
             'runtimeStatuses' => app(ProjectRuntimeStatus::class)->forCurrentTeam(),
             'projectsJs' => $this->projects->map(function (Project $project) use ($pins): array {
                 $firstEnvironment = $project->environments->first();
